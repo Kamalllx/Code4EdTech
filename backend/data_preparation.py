@@ -150,10 +150,10 @@ class OMRDataPreparator:
         return A.Compose([
             A.Rotate(limit=10, p=0.5),
             A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
-            A.GaussNoise(var_limit=(10.0, 50.0), p=0.3),
+            A.GaussianNoise(var_limit=(10.0, 50.0), p=0.3),
             A.Blur(blur_limit=3, p=0.3),
             A.HorizontalFlip(p=0.3),
-            A.ShiftScaleRotate(shift_limit=0.05, scale_limit=0.1, rotate_limit=5, p=0.5),
+            A.Affine(shift_limit=0.05, scale_limit=0.1, rotate_limit=5, p=0.5),
         ], bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels']))
     
     def process_single_image(self, image_path: str, output_dir: str, 
@@ -268,7 +268,7 @@ class OMRDataPreparator:
                 
                 with open(aug_label_path, 'w') as f:
                     for cls, bbox in zip(augmented['class_labels'], augmented['bboxes']):
-                        f.write(f"{cls} {' '.join(map(str, bbox))}\n")
+                        f.write(f"{int(cls)} {' '.join(map(str, bbox))}\n")
                         
             except Exception as e:
                 print(f"Augmentation failed for {base_name}: {e}")
