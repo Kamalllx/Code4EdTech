@@ -1,10 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Upload, FileText, User, Calendar, AlertCircle, CheckCircle, Clock, Camera } from 'lucide-react'
+import { Upload, FileText, AlertCircle, CheckCircle, Clock, Camera } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { apiClient, type Student, type Exam } from '@/lib/api'
@@ -22,7 +21,7 @@ export default function UploadPage() {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing' | 'completed' | 'error'>('idle')
   const [error, setError] = useState<string | null>(null)
-  const [uploadResult, setUploadResult] = useState<any>(null)
+  const [uploadResult, setUploadResult] = useState<unknown>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -360,7 +359,7 @@ export default function UploadPage() {
                 </div>
               )}
 
-              {uploadStatus === 'completed' && uploadResult && (
+              {uploadStatus === 'completed' && uploadResult !== null && (
                 <div className="space-y-4">
                   <div className="flex items-center space-x-3">
                     <div className="p-2 bg-green-100 rounded-full">
@@ -368,7 +367,7 @@ export default function UploadPage() {
                     </div>
                     <div>
                       <p className="font-medium text-green-700">Processing Complete!</p>
-                      <p className="text-sm text-gray-500">Sheet ID: {uploadResult.sheet_id}</p>
+                      <p className="text-sm text-gray-500">Sheet ID: {String((uploadResult as { sheet_id?: string })?.sheet_id || 'N/A')}</p>
                     </div>
                   </div>
                   
@@ -419,7 +418,7 @@ export default function UploadPage() {
             <EnhancedOMRUpload 
               onUploadSuccess={(result) => {
                 console.log('Enhanced upload success:', result)
-                setUploadResult(result)
+                setUploadResult(result as unknown)
                 setUploadStatus('completed')
               }}
               onUploadError={(error) => {
@@ -437,7 +436,7 @@ export default function UploadPage() {
                 <CardHeader>
                   <CardTitle>AR Camera Upload</CardTitle>
                   <CardDescription>
-                    Use your device's camera to automatically detect and capture OMR sheets
+                    Use your device&apos;s camera to automatically detect and capture OMR sheets
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

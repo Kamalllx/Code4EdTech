@@ -3,8 +3,29 @@
 import React, { useState } from 'react'
 import { apiClient } from '@/lib/api'
 
+interface OMRResult {
+  total_questions: number
+  total_score: number
+  percentage: number
+  model_confidence: number
+  question_numbers_detected: number
+  bubbles_detected: number
+  questions_mapped: number
+  subject_scores?: Record<string, number>
+  student_answers?: Record<string, string>
+  database_save?: {
+    omr_sheet_id: number
+  }
+}
+
+interface DetectionPreview {
+  question_numbers?: number[]
+  bubbles?: Array<{ x: number; y: number; width: number; height: number }>
+  question_mapping?: Record<string, string>
+}
+
 interface EnhancedOMRUploadProps {
-  onUploadSuccess?: (result: any) => void
+  onUploadSuccess?: (result: OMRResult) => void
   onUploadError?: (error: string) => void
 }
 
@@ -18,8 +39,8 @@ export default function EnhancedOMRUpload({
   const [studentId, setStudentId] = useState('')
   const [examId, setExamId] = useState('')
   const [sheetVersion, setSheetVersion] = useState('Set A')
-  const [result, setResult] = useState<any>(null)
-  const [detectionPreview, setDetectionPreview] = useState<any>(null)
+  const [result, setResult] = useState<OMRResult | null>(null)
+  const [detectionPreview, setDetectionPreview] = useState<DetectionPreview | null>(null)
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -75,9 +96,10 @@ export default function EnhancedOMRUpload({
         throw new Error(response.error || 'Upload failed')
       }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Upload error:', error)
-      onUploadError?.(error.message || 'Upload failed')
+      const errorMessage = error instanceof Error ? error.message : 'Upload failed'
+      onUploadError?.(errorMessage)
     } finally {
       setIsUploading(false)
       setUploadProgress(0)
@@ -229,7 +251,7 @@ export default function EnhancedOMRUpload({
                   {Object.entries(result.subject_scores).map(([subject, score]) => (
                     <div key={subject}>
                       <span className="text-gray-600">{subject}:</span>
-                      <span className="ml-2 font-medium">{score}</span>
+                      <span className="ml-2 font-medium">{String(score)}</span>
                     </div>
                   ))}
                 </div>
@@ -244,7 +266,7 @@ export default function EnhancedOMRUpload({
                   {Object.entries(result.student_answers).slice(0, 20).map(([question, answer]) => (
                     <div key={question} className="text-center">
                       <div className="font-medium">{question}</div>
-                      <div className="text-gray-600">{answer}</div>
+                      <div className="text-gray-600">{String(answer)}</div>
                     </div>
                   ))}
                 </div>

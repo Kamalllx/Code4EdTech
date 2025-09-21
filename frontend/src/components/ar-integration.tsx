@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import Image from 'next/image'
 import { Camera, Upload, AlertCircle, CheckCircle } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,7 +10,7 @@ import { Progress } from '@/components/ui/progress'
 
 interface ARIntegrationProps {
   onImageCapture: (imageData: string) => void
-  onProcessingComplete: (result: any) => void
+  onProcessingComplete: (result: Record<string, unknown>) => void
 }
 
 export default function ARIntegration({ onImageCapture, onProcessingComplete }: ARIntegrationProps) {
@@ -215,9 +216,11 @@ export default function ARIntegration({ onImageCapture, onProcessingComplete }: 
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <img
+              <Image
                 src={capturedImage}
                 alt="Captured OMR sheet"
+                width={400}
+                height={256}
                 className="w-full h-64 object-contain border rounded-lg"
               />
               

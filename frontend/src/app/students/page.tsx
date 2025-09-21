@@ -10,7 +10,6 @@ import { apiClient, type Student } from '@/lib/api'
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [showAddForm, setShowAddForm] = useState(false)
 
@@ -24,7 +23,6 @@ export default function StudentsPage() {
       const data = await apiClient.getStudents()
       setStudents(data)
     } catch (err) {
-      setError('Failed to load students')
       console.error('Error fetching students:', err)
     } finally {
       setLoading(false)

@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { backendAPI, type APIResponse } from './backend-config'
+import { backendAPI } from './backend-config'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 
@@ -56,7 +56,7 @@ export const endpoints = {
   
   // Results
   studentResults: (id: string) => `/api/results/${id}`,
-  examResults: (id: string) => `/api/results`,
+  examResults: (examId: string) => `/api/results/exam/${examId}`,
   exportResults: (id: string) => `/api/export/${id}`,
   
   // Statistics
@@ -85,7 +85,7 @@ export interface Exam {
   exam_date: string
   total_questions: number
   subjects: string[]
-  answer_key: Record<string, string[]>
+  answer_key: Record<string, string>
   created_at: string
   created_by?: string
 }
@@ -113,8 +113,8 @@ export interface Result {
   subject_scores: Record<string, number>
   total_score: number
   percentage: number
-  answers: Record<string, any>
-  processing_metadata?: Record<string, any>
+  answers: Record<string, string>
+  processing_metadata?: Record<string, unknown>
   created_at: string
 }
 
@@ -211,7 +211,7 @@ export const apiClient = {
 
   async getExamResults(examId: string): Promise<Result[]> {
     const response = await backendAPI.getExamResults(examId)
-    return response.data || []
+    return (response.data as Result[]) || []
   },
 
   async exportResults(examId: string, format: 'csv' | 'excel' = 'csv') {
@@ -224,7 +224,7 @@ export const apiClient = {
   // Statistics
   async getOverviewStats(): Promise<SystemStats> {
     const response = await backendAPI.getStatistics('1') // Use exam ID 1 for now
-    return response.data || {
+    return (response.data as SystemStats) || {
       total_students: 0,
       total_exams: 0,
       total_sheets: 0,
@@ -235,7 +235,7 @@ export const apiClient = {
   },
 
   // AR Integration
-  async processARCapture(imageData: string, metadata?: any) {
+  async processARCapture(imageData: string, metadata?: Record<string, unknown>) {
     return await backendAPI.processARCapture({
       image_data: imageData,
       metadata: {
