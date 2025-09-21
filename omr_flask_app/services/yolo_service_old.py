@@ -14,7 +14,6 @@ from ultralytics import YOLO
 import torch
 from sklearn.cluster import DBSCAN
 from scipy.spatial.distance import euclidean
-from datetime import datetime
 
 
 class YOLOService:
@@ -30,16 +29,16 @@ class YOLOService:
         self.model_info = {}
         self.logger = logging.getLogger(__name__)
         
-        # OMR-specific configuration aligned with backend training - Very low thresholds for marked bubble detection
+        # OMR-specific configuration aligned with backend training
         self.omr_config = {
-            'confidence_threshold': 0.1,  # Very low confidence for bubble classification (was 0.25)
+            'confidence_threshold': 0.5,  # Minimum confidence for bubble classification
             'bubble_detection_threshold': 0.3,  # For initial bubble detection
             'bubble_min_size': 15,  # Minimum bubble size in pixels
             'bubble_max_size': 80,  # Maximum bubble size in pixels
-            'marking_threshold': 0.15,  # Very low threshold for marked vs unmarked classification (was 0.3)
+            'marking_threshold': 0.5,  # Threshold for marked vs unmarked classification
             'expected_bubble_ratio': 0.8,  # Expected width/height ratio for bubbles
-            'grid_tolerance': 25,  # Pixel tolerance for grid alignment
-            'crop_padding': 8  # Padding around bubble crops
+            'grid_tolerance': 20,  # Pixel tolerance for grid alignment
+            'crop_padding': 5  # Padding around bubble crops
         }
         
         # Class names from backend training
@@ -76,7 +75,7 @@ class YOLOService:
                 'loaded_successfully': True
             }
             
-            self.logger.info(f"YOLO classification model loaded successfully: {self.model_info}")
+            self.logger.info(f"YOLO model loaded successfully: {self.model_info}")
             return True
             
         except Exception as e:
@@ -121,8 +120,7 @@ class YOLOService:
             if not bubble_regions:
                 return {
                     'success': False,
-                    'error': 'No bubble regions detected in the image',
-                    'total_bubbles_detected': 0
+                    'error': 'No bubble regions detected in the image'
                 }
             
             # Step 2: Classify each bubble using YOLO
@@ -145,24 +143,16 @@ class YOLOService:
             organized_bubbles = self._organize_bubbles_by_questions(classified_bubbles, image.shape)
             
             # Step 4: Extract student answers
-            student_answers = self._extract_student_answers(organized_bubbles)
+            student_answers = self._extract_student_answers_classification(organized_bubbles)
             
             # Step 5: Calculate scores if answer key is provided
             scoring_results = {}
             if answer_key:
                 scoring_results = self._calculate_scores(student_answers, answer_key)
             
-            # Count marked/unmarked bubbles with debug info
-            marked_bubbles = [b for b in classified_bubbles if b['is_marked']]
-            marked_count = len(marked_bubbles)
+            # Count marked/unmarked bubbles
+            marked_count = len([b for b in classified_bubbles if b['is_marked']])
             unmarked_count = len(classified_bubbles) - marked_count
-            
-            # Optional: Brief classification summary (can be disabled)
-            if len(classified_bubbles) > 0 and marked_count > 0:
-                print(f"✅ Bubble Classification Summary:")
-                print(f"   📊 Total bubbles detected: {len(classified_bubbles)}")
-                print(f"   ✏️  Marked bubbles found: {marked_count}")
-                print(f"   📋 Using traditional computer vision method")
             
             evaluation_results = {
                 'success': True,
@@ -270,7 +260,7 @@ class YOLOService:
     
     def _classify_bubble(self, bubble_crop: np.ndarray) -> Dict[str, Any]:
         """
-        Classify a single bubble crop using traditional CV methods (fallback when proper model unavailable)
+        Classify a single bubble crop using YOLO classification model
         
         Args:
             bubble_crop: Cropped bubble image
@@ -279,8 +269,44 @@ class YOLOService:
             Classification result
         """
         try:
-            # Use traditional computer vision for bubble classification as fallback
-            return self._classify_bubble_traditional_cv(bubble_crop)
+            # Run YOLO classification
+            results = self.model(bubble_crop, verbose=False)
+            result = results[0]
+            
+            # Extract classification results
+            if hasattr(result, 'probs') and result.probs is not None:
+                # Classification model results
+                class_id = result.probs.top1
+                confidence = float(result.probs.top1conf)
+                class_name = result.names[class_id] if hasattr(result, 'names') else self.class_names.get(class_id, 'unknown')
+                
+                # Get full probability distribution
+                probs = result.probs.data.cpu().numpy() if hasattr(result.probs, 'data') else [confidence, 1-confidence]
+                
+                is_marked = class_name == 'marked_bubble'
+                
+                return {
+                    'class_id': int(class_id),
+                    'class_name': class_name,
+                    'confidence': confidence,
+                    'is_marked': is_marked,
+                    'probabilities': {
+                        'marked_bubble': float(probs[0]) if class_name == 'marked_bubble' else float(probs[1]),
+                        'unmarked_bubble': float(probs[1]) if class_name == 'marked_bubble' else float(probs[0])
+                    },
+                    'prediction_quality': 'high' if confidence > 0.8 else 'medium' if confidence > 0.6 else 'low'
+                }
+            else:
+                # Fallback for unexpected result format
+                return {
+                    'class_id': 1,  # Default to unmarked
+                    'class_name': 'unmarked_bubble',
+                    'confidence': 0.5,
+                    'is_marked': False,
+                    'probabilities': {'marked_bubble': 0.0, 'unmarked_bubble': 1.0},
+                    'prediction_quality': 'low',
+                    'note': 'Fallback classification used'
+                }
                 
         except Exception as e:
             self.logger.error(f"Error classifying bubble: {str(e)}")
@@ -289,106 +315,8 @@ class YOLOService:
                 'class_name': 'unmarked_bubble',
                 'confidence': 0.0,
                 'is_marked': False,
-                'probabilities': {'marked_bubble': 0.0, 'unmarked_bubble': 1.0},
+                'probabilities': {'marked_bubble': 0.0, 'unmarked_bubble': 0.0},
                 'prediction_quality': 'error',
-                'error': str(e)
-            }
-    
-    def _classify_bubble_traditional_cv(self, bubble_crop: np.ndarray) -> Dict[str, Any]:
-        """
-        Classify bubble using traditional computer vision methods
-        
-        This is a fallback method when proper trained model is not available
-        """
-        try:
-            # Ensure minimum size
-            if bubble_crop.shape[0] < 16 or bubble_crop.shape[1] < 16:
-                bubble_crop = cv2.resize(bubble_crop, (32, 32))
-            
-            # Convert to grayscale
-            if len(bubble_crop.shape) == 3:
-                gray = cv2.cvtColor(bubble_crop, cv2.COLOR_BGR2GRAY)
-            else:
-                gray = bubble_crop
-            
-            # Apply Gaussian blur to reduce noise
-            blurred = cv2.GaussianBlur(gray, (3, 3), 0)
-            
-            # Calculate darkness metrics
-            mean_intensity = np.mean(blurred)
-            std_intensity = np.std(blurred)
-            dark_pixel_ratio = np.sum(blurred < 100) / blurred.size
-            very_dark_ratio = np.sum(blurred < 50) / blurred.size
-            
-            # Apply adaptive thresholding
-            adaptive_thresh = cv2.adaptiveThreshold(
-                blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-            )
-            
-            # Calculate fill ratio (dark pixels in thresholded image)
-            fill_ratio = 1 - (np.sum(adaptive_thresh) / (255 * adaptive_thresh.size))
-            
-            # Multi-criteria marking detection
-            marking_indicators = {
-                'low_mean_intensity': mean_intensity < 120,     # Dark overall
-                'high_dark_ratio': dark_pixel_ratio > 0.3,     # Many dark pixels
-                'high_very_dark_ratio': very_dark_ratio > 0.1, # Some very dark pixels
-                'high_fill_ratio': fill_ratio > 0.3,           # High fill from thresholding
-                'high_std': std_intensity > 25                  # Good contrast variation
-            }
-            
-            # Calculate marking score
-            marking_score = sum([
-                marking_indicators['low_mean_intensity'] * 0.3,
-                marking_indicators['high_dark_ratio'] * 0.25,
-                marking_indicators['high_very_dark_ratio'] * 0.2,
-                marking_indicators['high_fill_ratio'] * 0.15,
-                marking_indicators['high_std'] * 0.1
-            ])
-            
-            # Determine if marked (lowered threshold for better detection)
-            is_marked = marking_score > 0.35  # Reduced from typical 0.5
-            confidence = min(marking_score * 1.5, 0.95) if is_marked else min((1 - marking_score) * 1.5, 0.95)
-            
-            # Adjust confidence based on image quality
-            quality_factor = min(std_intensity / 50.0, 1.0)  # Higher std = better quality
-            confidence *= quality_factor
-            
-            class_name = 'marked_bubble' if is_marked else 'unmarked_bubble'
-            class_id = 0 if is_marked else 1
-            
-            return {
-                'class_id': class_id,
-                'class_name': class_name,
-                'confidence': float(confidence),
-                'is_marked': is_marked,
-                'probabilities': {
-                    'marked_bubble': float(marking_score),
-                    'unmarked_bubble': float(1 - marking_score)
-                },
-                'prediction_quality': 'high' if confidence > 0.7 else 'medium' if confidence > 0.5 else 'low',
-                'method': 'traditional_cv',
-                'metrics': {
-                    'mean_intensity': float(mean_intensity),
-                    'dark_pixel_ratio': float(dark_pixel_ratio),
-                    'very_dark_ratio': float(very_dark_ratio),
-                    'fill_ratio': float(fill_ratio),
-                    'marking_score': float(marking_score),
-                    'quality_factor': float(quality_factor)
-                },
-                'indicators': marking_indicators
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Error in traditional CV classification: {str(e)}")
-            return {
-                'class_id': 1,
-                'class_name': 'unmarked_bubble',
-                'confidence': 0.0,
-                'is_marked': False,
-                'probabilities': {'marked_bubble': 0.0, 'unmarked_bubble': 1.0},
-                'prediction_quality': 'error',
-                'method': 'traditional_cv',
                 'error': str(e)
             }
     
@@ -444,7 +372,7 @@ class YOLOService:
             # Fallback: create single question with all bubbles
             return {"Q1": classified_bubbles}
     
-    def _extract_student_answers(self, organized_bubbles: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Dict[str, Any]]:
+    def _extract_student_answers_classification(self, organized_bubbles: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Dict[str, Any]]:
         """
         Extract student answers from organized classified bubbles
         
@@ -523,170 +451,344 @@ class YOLOService:
         
         return 'A'  # Default fallback
     
+    def _parse_detections(self, results, image_shape: Tuple[int, int, int]) -> List[Dict[str, Any]]:
+        """Parse YOLO detection results"""
+        detections = []
+        
+        for result in results:
+            if hasattr(result, 'boxes') and result.boxes is not None:
+                # Object detection format
+                boxes = result.boxes
+                for i in range(len(boxes)):
+                    bbox = boxes.xyxy[i].cpu().numpy()
+                    confidence = float(boxes.conf[i].cpu().numpy())
+                    class_id = int(boxes.cls[i].cpu().numpy())
+                    
+                    # Convert bbox to center format
+                    x1, y1, x2, y2 = bbox
+                    center_x = (x1 + x2) / 2
+                    center_y = (y1 + y2) / 2
+                    width = x2 - x1
+                    height = y2 - y1
+                    
+                    detection = {
+                        'bbox': {
+                            'x1': float(x1), 'y1': float(y1),
+                            'x2': float(x2), 'y2': float(y2),
+                            'center_x': float(center_x), 'center_y': float(center_y),
+                            'width': float(width), 'height': float(height)
+                        },
+                        'confidence': confidence,
+                        'class_id': class_id,
+                        'class': self.model_info.get('classes', {}).get(class_id, f'class_{class_id}'),
+                        'bubble_id': len(detections)
+                    }
+                    
+                    # Validate detection as reasonable bubble
+                    if self._is_valid_bubble_detection(detection, image_shape):
+                        detections.append(detection)
+            
+            elif hasattr(result, 'probs') and result.probs is not None:
+                # Classification format - need to detect bubbles first
+                bubbles = self._detect_bubbles_cv(results[0].orig_img)
+                for i, bubble_bbox in enumerate(bubbles):
+                    # Classify each bubble
+                    bubble_roi = self._extract_bubble_roi(results[0].orig_img, bubble_bbox)
+                    classification_result = self.model(bubble_roi)
+                    
+                    if classification_result and len(classification_result) > 0:
+                        probs = classification_result[0].probs
+                        class_id = probs.top1
+                        confidence = float(probs.top1conf)
+                        
+                        detection = {
+                            'bbox': {
+                                'x1': float(bubble_bbox[0]), 'y1': float(bubble_bbox[1]),
+                                'x2': float(bubble_bbox[0] + bubble_bbox[2]), 
+                                'y2': float(bubble_bbox[1] + bubble_bbox[3]),
+                                'center_x': float(bubble_bbox[0] + bubble_bbox[2]/2),
+                                'center_y': float(bubble_bbox[1] + bubble_bbox[3]/2),
+                                'width': float(bubble_bbox[2]), 'height': float(bubble_bbox[3])
+                            },
+                            'confidence': confidence,
+                            'class_id': class_id,
+                            'class': self.model_info.get('classes', {}).get(class_id, f'class_{class_id}'),
+                            'bubble_id': i
+                        }
+                        
+                        if self._is_valid_bubble_detection(detection, image_shape):
+                            detections.append(detection)
+        
+        return detections
+    
+    def _detect_bubbles_cv(self, image: np.ndarray) -> List[Tuple[int, int, int, int]]:
+        """Detect bubbles using computer vision as fallback"""
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # Use HoughCircles to detect circular bubbles
+        circles = cv2.HoughCircles(
+            gray, cv2.HOUGH_GRADIENT, dp=1, minDist=20,
+            param1=50, param2=30, 
+            minRadius=self.omr_config['bubble_min_size'], 
+            maxRadius=self.omr_config['bubble_max_size']
+        )
+        
+        bubbles = []
+        if circles is not None:
+            circles = np.round(circles[0, :]).astype("int")
+            for (x, y, r) in circles:
+                # Convert circle to bounding box
+                x1, y1 = max(0, x - r), max(0, y - r)
+                w, h = min(2*r, image.shape[1] - x1), min(2*r, image.shape[0] - y1)
+                bubbles.append((x1, y1, w, h))
+        
+        return bubbles
+    
+    def _extract_bubble_roi(self, image: np.ndarray, bbox: Tuple[int, int, int, int]) -> np.ndarray:
+        """Extract bubble region of interest"""
+        x, y, w, h = bbox
+        roi = image[y:y+h, x:x+w]
+        
+        # Resize to standard size for classification
+        if roi.size > 0:
+            roi = cv2.resize(roi, (64, 64))
+        
+        return roi
+    
+    def _is_valid_bubble_detection(self, detection: Dict[str, Any], image_shape: Tuple[int, int, int]) -> bool:
+        """Validate if detection is a reasonable bubble"""
+        bbox = detection['bbox']
+        
+        # Check size constraints
+        width, height = bbox['width'], bbox['height']
+        if width < self.omr_config['bubble_min_size'] or width > self.omr_config['bubble_max_size']:
+            return False
+        if height < self.omr_config['bubble_min_size'] or height > self.omr_config['bubble_max_size']:
+            return False
+        
+        # Check aspect ratio (bubbles should be roughly circular)
+        aspect_ratio = width / height if height > 0 else 0
+        if aspect_ratio < 0.5 or aspect_ratio > 2.0:
+            return False
+        
+        # Check if detection is within image bounds
+        img_height, img_width = image_shape[:2]
+        if (bbox['x1'] < 0 or bbox['y1'] < 0 or 
+            bbox['x2'] > img_width or bbox['y2'] > img_height):
+            return False
+        
+        # Check confidence threshold
+        if detection['confidence'] < self.omr_config['confidence_threshold']:
+            return False
+        
+        return True
+    
+    def _organize_detections_by_questions(self, detections: List[Dict[str, Any]], 
+                                        image_shape: Tuple[int, int, int]) -> Dict[str, List[Dict[str, Any]]]:
+        """Organize detections by question rows"""
+        if not detections:
+            return {}
+        
+        # Sort detections by Y coordinate (top to bottom)
+        sorted_detections = sorted(detections, key=lambda d: d['bbox']['center_y'])
+        
+        # Group by approximate Y coordinate (question rows)
+        questions = {}
+        current_question = 1
+        current_y = sorted_detections[0]['bbox']['center_y']
+        row_threshold = 30  # Pixels tolerance for same row
+        
+        current_row_detections = []
+        
+        for detection in sorted_detections:
+            detection_y = detection['bbox']['center_y']
+            
+            # If Y coordinate is significantly different, start new question
+            if abs(detection_y - current_y) > row_threshold:
+                if current_row_detections:
+                    # Sort current row by X coordinate (left to right)
+                    current_row_detections.sort(key=lambda d: d['bbox']['center_x'])
+                    questions[f'question_{current_question}'] = current_row_detections
+                    current_question += 1
+                
+                current_row_detections = [detection]
+                current_y = detection_y
+            else:
+                current_row_detections.append(detection)
+        
+        # Don't forget the last row
+        if current_row_detections:
+            current_row_detections.sort(key=lambda d: d['bbox']['center_x'])
+            questions[f'question_{current_question}'] = current_row_detections
+        
+        return questions
+    
+    def _extract_student_answers(self, organized_detections: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
+        """Extract student answers from organized detections"""
+        student_answers = {}
+        
+        for question_id, detections in organized_detections.items():
+            marked_bubbles = [d for d in detections if d['class'] == 'marked_bubble']
+            
+            # Determine answer based on marked bubbles
+            if not marked_bubbles:
+                student_answers[question_id] = {
+                    'answer': None,
+                    'confidence': 0.0,
+                    'multiple_marks': False,
+                    'no_mark': True
+                }
+            elif len(marked_bubbles) == 1:
+                # Single answer (normal case)
+                bubble = marked_bubbles[0]
+                # Determine answer letter based on position (A, B, C, D, etc.)
+                bubble_index = next(i for i, d in enumerate(detections) if d == bubble)
+                answer_letter = chr(ord('A') + bubble_index)
+                
+                student_answers[question_id] = {
+                    'answer': answer_letter,
+                    'confidence': bubble['confidence'],
+                    'multiple_marks': False,
+                    'no_mark': False,
+                    'bubble_index': bubble_index
+                }
+            else:
+                # Multiple marks detected
+                best_bubble = max(marked_bubbles, key=lambda b: b['confidence'])
+                bubble_index = next(i for i, d in enumerate(detections) if d == best_bubble)
+                answer_letter = chr(ord('A') + bubble_index)
+                
+                student_answers[question_id] = {
+                    'answer': answer_letter,
+                    'confidence': best_bubble['confidence'],
+                    'multiple_marks': True,
+                    'no_mark': False,
+                    'bubble_index': bubble_index,
+                    'warning': f'Multiple marks detected ({len(marked_bubbles)} bubbles)'
+                }
+        
+        return student_answers
+    
     def _calculate_scores(self, student_answers: Dict[str, Any], 
                          answer_key: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Calculate scores by comparing student answers with answer key
+        """Calculate scores based on answer key"""
+        scoring_results = {
+            'total_questions': len(answer_key),
+            'answered_questions': 0,
+            'correct_answers': 0,
+            'incorrect_answers': 0,
+            'unanswered_questions': 0,
+            'multiple_mark_penalties': 0,
+            'detailed_results': {},
+            'score_percentage': 0.0
+        }
         
-        Args:
-            student_answers: Extracted student answers
-            answer_key: Correct answers
+        for question_id, correct_answer in answer_key.items():
+            student_answer_data = student_answers.get(question_id, {})
+            student_answer = student_answer_data.get('answer')
             
-        Returns:
-            Scoring results with detailed breakdown
-        """
-        try:
-            detailed_results = {}
-            correct_count = 0
-            total_questions = len(answer_key)
+            result = {
+                'correct_answer': correct_answer,
+                'student_answer': student_answer,
+                'is_correct': False,
+                'points': 0,
+                'status': 'unanswered'
+            }
             
-            for question_id, correct_answer in answer_key.items():
-                student_data = student_answers.get(question_id, {})
-                student_answer = student_data.get('answer')
-                
-                if student_data.get('multiple_marks', False):
-                    status = 'multiple_marks'
-                    is_correct = False
-                elif student_answer is None:
-                    status = 'no_answer'
-                    is_correct = False
-                elif student_answer == correct_answer:
-                    status = 'correct'
-                    is_correct = True
-                    correct_count += 1
-                else:
-                    status = 'incorrect'
-                    is_correct = False
-                
-                detailed_results[question_id] = {
-                    'student_answer': student_answer,
-                    'correct_answer': correct_answer,
-                    'is_correct': is_correct,
-                    'status': status,
-                    'confidence': student_data.get('confidence', 0.0)
-                }
-            
-            score_percentage = (correct_count / total_questions * 100) if total_questions > 0 else 0
-            
-            # Determine grade based on percentage
-            if score_percentage >= 90:
-                grade = 'A'
-            elif score_percentage >= 80:
-                grade = 'B'
-            elif score_percentage >= 70:
-                grade = 'C'
-            elif score_percentage >= 60:
-                grade = 'D'
+            if student_answer is None:
+                result['status'] = 'unanswered'
+                scoring_results['unanswered_questions'] += 1
+            elif student_answer_data.get('multiple_marks', False):
+                result['status'] = 'multiple_marks'
+                scoring_results['multiple_mark_penalties'] += 1
+                # Depending on scoring rules, might give 0 points or negative points
             else:
-                grade = 'F'
+                scoring_results['answered_questions'] += 1
+                if student_answer.upper() == correct_answer.upper():
+                    result['is_correct'] = True
+                    result['points'] = 1
+                    result['status'] = 'correct'
+                    scoring_results['correct_answers'] += 1
+                else:
+                    result['status'] = 'incorrect'
+                    scoring_results['incorrect_answers'] += 1
             
-            scoring_results = {
-                'total_questions': total_questions,
-                'correct_answers': correct_count,
-                'incorrect_answers': total_questions - correct_count,
-                'score_percentage': score_percentage,
-                'grade': grade,
-                'detailed_results': detailed_results,
-                'summary': {
-                    'answered': len([q for q in student_answers.values() if q.get('answer') is not None]),
-                    'unanswered': len([q for q in student_answers.values() if q.get('answer') is None]),
-                    'multiple_marks': len([q for q in student_answers.values() if q.get('multiple_marks', False)])
-                }
-            }
-            
-            return scoring_results
-            
-        except Exception as e:
-            self.logger.error(f"Error calculating scores: {str(e)}")
-            return {
-                'error': str(e),
-                'total_questions': len(answer_key),
-                'score_percentage': 0.0
-            }
-    
-    def generate_annotated_image(self, original_image: np.ndarray, 
-                               evaluation_results: Dict[str, Any]) -> np.ndarray:
-        """Generate annotated image with classification results"""
-        if not evaluation_results.get('success', False):
-            return original_image
+            result['confidence'] = student_answer_data.get('confidence', 0.0)
+            scoring_results['detailed_results'][question_id] = result
         
-        annotated = original_image.copy()
-        classified_bubbles = evaluation_results.get('bubble_classifications', [])
+        # Calculate percentage
+        if scoring_results['total_questions'] > 0:
+            scoring_results['score_percentage'] = (
+                scoring_results['correct_answers'] / scoring_results['total_questions']
+            ) * 100
+        
+        return scoring_results
+    
+    def create_annotated_image(self, image: np.ndarray, 
+                             evaluation_results: Dict[str, Any]) -> np.ndarray:
+        """Create annotated image with detection results"""
+        annotated = image.copy()
+        
+        if not evaluation_results.get('success', False):
+            return annotated
+        
+        detections = evaluation_results.get('detections', [])
         student_answers = evaluation_results.get('student_answers', {})
         scoring_results = evaluation_results.get('scoring_results', {})
         
-        # Color mapping for different classifications
-        color_map = {
-            'marked_bubble': (0, 255, 0),      # Green for marked
-            'unmarked_bubble': (0, 0, 255),    # Red for unmarked
-            'low_confidence': (0, 255, 255),   # Yellow for low confidence
-            'error': (128, 128, 128)           # Gray for errors
-        }
-        
-        # Draw bubble regions and classifications
-        for bubble in classified_bubbles:
-            region = bubble['region']
-            x, y, w, h = region['x'], region['y'], region['width'], region['height']
+        # Draw detections
+        for detection in detections:
+            bbox = detection['bbox']
+            x1, y1, x2, y2 = int(bbox['x1']), int(bbox['y1']), int(bbox['x2']), int(bbox['y2'])
             
-            # Determine color based on classification and confidence
-            class_name = bubble['class_name']
-            confidence = bubble['confidence']
-            
-            if bubble.get('error'):
-                color = color_map['error']
-            elif confidence < 0.6:
-                color = color_map['low_confidence']
+            # Color based on class
+            if detection['class'] == 'marked_bubble':
+                color = (0, 255, 0)  # Green for marked
+                thickness = 3
             else:
-                color = color_map.get(class_name, (255, 255, 255))
+                color = (0, 0, 255)  # Red for unmarked
+                thickness = 2
             
-            # Adjust thickness based on confidence
-            thickness = 3 if confidence > 0.8 else 2
+            # Draw bounding box
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, thickness)
             
-            # Draw bounding box around bubble
-            cv2.rectangle(annotated, (x, y), (x + w, y + h), color, thickness)
-            
-            # Draw classification and confidence
-            label = f"{class_name[:6]}: {confidence:.2f}"
-            cv2.putText(annotated, label, (x, y - 5), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+            # Draw confidence score
+            conf_text = f"{detection['confidence']:.2f}"
+            cv2.putText(annotated, conf_text, (x1, y1-10), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
         
-        # Add question-level annotations
-        organized_bubbles = evaluation_results.get('organized_by_questions', {})
-        for question_id, question_bubbles in organized_bubbles.items():
-            if question_bubbles:
-                # Find the leftmost bubble in this question for label placement
-                leftmost = min(question_bubbles, key=lambda b: b['position']['x'])
-                x = int(leftmost['position']['x'] - 60)
-                y = int(leftmost['position']['y'])
+        # Add answer annotations
+        organized_detections = evaluation_results.get('organized_by_questions', {})
+        for question_id, question_detections in organized_detections.items():
+            if question_detections:
+                # Find the leftmost bubble in this question
+                leftmost = min(question_detections, key=lambda d: d['bbox']['center_x'])
+                x = int(leftmost['bbox']['x1'] - 50)
+                y = int(leftmost['bbox']['center_y'])
                 
                 # Get student answer for this question
                 answer_data = student_answers.get(question_id, {})
                 answer = answer_data.get('answer', 'None')
-                status = answer_data.get('status', 'unknown')
                 
-                # Color based on answer status and correctness
+                # Color based on correctness if scoring is available
                 text_color = (255, 255, 255)  # White default
-                if status == 'multiple_marks':
-                    text_color = (0, 165, 255)  # Orange
-                elif scoring_results and question_id in scoring_results.get('detailed_results', {}):
+                if scoring_results and question_id in scoring_results.get('detailed_results', {}):
                     result = scoring_results['detailed_results'][question_id]
                     if result['status'] == 'correct':
                         text_color = (0, 255, 0)  # Green
                     elif result['status'] == 'incorrect':
                         text_color = (0, 0, 255)  # Red
+                    elif result['status'] == 'multiple_marks':
+                        text_color = (0, 165, 255)  # Orange
                 
                 # Draw question number and answer
-                text = f"{question_id}: {answer}"
-                if status == 'multiple_marks':
-                    text += " (Multi)"
-                elif status == 'no_answer':
-                    text += " (None)"
-                
+                question_num = question_id.replace('question_', 'Q')
+                text = f"{question_num}: {answer}"
                 cv2.putText(annotated, text, (x, y), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2)
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, text_color, 2)
         
-        # Add summary information in the top area
-        summary_y = 25
+        # Add summary information
+        summary_y = 30
         summary_texts = [
             f"Total Bubbles: {evaluation_results.get('total_bubbles_detected', 0)}",
             f"Marked: {evaluation_results.get('marked_bubbles', 0)}",
@@ -694,24 +796,17 @@ class YOLOService:
         ]
         
         if scoring_results:
-            score = scoring_results.get('score_percentage', 0)
-            total_q = scoring_results.get('total_questions', 0)
-            correct = scoring_results.get('correct_answers', 0)
-            summary_texts.append(f"Score: {correct}/{total_q} ({score:.1f}%)")
-        
-        # Draw summary with background for better visibility
-        max_text_width = max([cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0][0] for text in summary_texts])
-        cv2.rectangle(annotated, (5, 5), (max_text_width + 15, len(summary_texts) * 25 + 10), (0, 0, 0), -1)
-        cv2.rectangle(annotated, (5, 5), (max_text_width + 15, len(summary_texts) * 25 + 10), (255, 255, 255), 1)
+            summary_texts.append(f"Score: {scoring_results.get('score_percentage', 0):.1f}%")
         
         for i, text in enumerate(summary_texts):
-            cv2.putText(annotated, text, (10, summary_y + i*22), 
+            cv2.putText(annotated, text, (10, summary_y + i*25), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         
         return annotated
     
     def _get_timestamp(self) -> str:
         """Get current timestamp"""
+        from datetime import datetime
         return datetime.now().isoformat()
     
     def batch_evaluate_images(self, images: List[np.ndarray], 

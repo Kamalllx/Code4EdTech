@@ -1,0 +1,49 @@
+{
+  "exam_id": "sample_exam_001",
+  "exam_title": "Sample OMR Test",
+  "total_questions": 20,
+  "questions_per_row": 5,
+  "options_per_question": 4,
+  "correct_answers": {
+    "1": "A",
+    "2": "B", 
+    "3": "C",
+    "4": "D",
+    "5": "A",
+    "6": "B",
+    "7": "C",
+    "8": "D",
+    "9": "A",
+    "10": "B",
+    "11": "C",
+    "12": "D",
+    "13": "A",
+    "14": "B",
+    "15": "C",
+    "16": "D",
+    "17": "A",
+    "18": "B",
+    "19": "C",
+    "20": "D"
+  },
+  "scoring": {
+    "correct_marks": 1,
+    "incorrect_marks": -0.25,
+    "unanswered_marks": 0,
+    "grading_scale": {
+      "A+": 90,
+      "A": 80,
+      "B+": 70,
+      "B": 60,
+      "C": 50,
+      "D": 40,
+      "F": 0
+    }
+  },
+  "metadata": {
+    "created_date": "2024-01-15",
+    "subject": "Sample Subject",
+    "duration_minutes": 60,
+    "max_score": 20
+  }
+}

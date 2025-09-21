@@ -17,29 +17,93 @@ class CameraService:
         self.available_cameras = self._detect_cameras()
     
     def _detect_cameras(self) -> Dict[int, Dict[str, Any]]:
-        """Detect available cameras on the system"""
+        """Detect available cameras on the system with error suppression"""
         cameras = {}
         
-        # Test up to 10 camera indices
-        for i in range(10):
-            cap = cv2.VideoCapture(i)
-            if cap.isOpened():
-                # Get camera properties
-                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                fps = int(cap.get(cv2.CAP_PROP_FPS))
-                
-                cameras[i] = {
-                    'index': i,
-                    'width': width,
-                    'height': height,
-                    'fps': fps,
-                    'available': True
-                }
-                
-                cap.release()
-            else:
-                cap.release()
+        # Suppress OpenCV error messages temporarily
+        import os
+        import contextlib
+        
+        @contextlib.contextmanager
+        def suppress_opencv_errors():
+            # Suppress OpenCV errors using stderr redirection
+            import sys
+            from io import StringIO
+            
+            # Save current stderr
+            old_stderr = sys.stderr
+            try:
+                # Redirect stderr to suppress OpenCV error messages
+                sys.stderr = StringIO()
+                yield
+            finally:
+                # Restore original stderr
+                sys.stderr = old_stderr
+        
+        # Test only likely camera indices to reduce errors
+        test_indices = [0, 1, 2]  # Most systems have cameras at these indices
+        
+        with suppress_opencv_errors():
+            for i in test_indices:
+                cap = None
+                try:
+                    # Try different backends for better compatibility
+                    backends = [cv2.CAP_DSHOW, cv2.CAP_ANY] if platform.system() == "Windows" else [cv2.CAP_ANY]
+                    
+                    for backend in backends:
+                        try:
+                            cap = cv2.VideoCapture(i, backend)
+                            
+                            # Set a short timeout for camera opening
+                            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                            
+                            if cap.isOpened():
+                                # Test if camera can actually capture (with timeout)
+                                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # Reset to first frame
+                                ret, frame = cap.read()
+                                
+                                if ret and frame is not None:
+                                    # Get camera properties
+                                    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                                    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                                    fps = int(cap.get(cv2.CAP_PROP_FPS))
+                                    
+                                    cameras[i] = {
+                                        'index': i,
+                                        'width': width,
+                                        'height': height,
+                                        'fps': fps if fps > 0 else 30,  # Default to 30 if fps is 0
+                                        'available': True,
+                                        'backend': backend,
+                                        'tested': True
+                                    }
+                                    break  # Camera found, no need to try other backends
+                                    
+                        except Exception:
+                            # Silently continue to next backend
+                            pass
+                        finally:
+                            if cap:
+                                cap.release()
+                        
+                except Exception as e:
+                    # Silently handle camera detection errors
+                    pass
+                finally:
+                    if cap is not None:
+                        cap.release()
+        
+        # If no cameras detected, add a virtual camera entry
+        if not cameras:
+            cameras[0] = {
+                'index': 0,
+                'width': 640,
+                'height': 480,
+                'fps': 30,
+                'available': False,
+                'tested': False,
+                'note': 'No physical cameras detected'
+            }
         
         return cameras
     

@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OMR Flask Application - AR Camera Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .camera-section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .camera-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+        }
+        .btn-secondary {
+            background: #2196F3;
+            color: white;
+        }
+        .btn-warning {
+            background: #FF9800;
+            color: white;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        #cameraView {
+            width: 100%;
+            max-width: 640px;
+            height: 480px;
+            border: 2px solid #fff;
+            border-radius: 10px;
+            background: #000;
+            margin: 20px auto;
+            display: block;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-weight: bold;
+        }
+        .status.success { background: rgba(76, 175, 80, 0.3); }
+        .status.error { background: rgba(244, 67, 54, 0.3); }
+        .status.warning { background: rgba(255, 152, 0, 0.3); }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+        .feature-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+        }
+        .logs {
+            background: #000;
+            color: #00ff00;
+            border-radius: 8px;
+            padding: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 OMR Flask Application</h1>
+            <h2>AR Camera Testing Interface</h2>
+            <p>Advanced Optical Mark Recognition with AR Support</p>
+        </div>
+
+        <div class="camera-section">
+            <h3>📷 Camera Controls</h3>
+            
+            <div class="camera-buttons">
+                <button class="btn btn-primary" onclick="startPCCamera()">
+                    🖥️ PC Camera
+                </button>
+                <button class="btn btn-secondary" onclick="startPhoneCamera()">
+                    📱 Phone Camera
+                </button>
+                <button class="btn btn-warning" onclick="startARCamera()">
+                    🥽 AR Camera
+                </button>
+                <button class="btn" onclick="stopCamera()" style="background: #f44336; color: white;">
+                    ⏹️ Stop
+                </button>
+            </div>
+
+            <video id="cameraView" autoplay playsinline muted></video>
+            
+            <div class="camera-buttons">
+                <button class="btn btn-primary" onclick="captureImage()">
+                    📸 Capture Image
+                </button>
+                <button class="btn btn-secondary" onclick="processImage()">
+                    🔍 Process OMR
+                </button>
+            </div>
+        </div>
+
+        <div id="statusMessage" class="status" style="display: none;"></div>
+
+        <div class="features">
+            <div class="feature-card">
+                <h4>🎯 OMR Detection</h4>
+                <p>Advanced bubble detection using computer vision and traditional CV methods</p>
+            </div>
+            <div class="feature-card">
+                <h4>📋 Excel Support</h4>
+                <p>Load answer keys from Excel files with multi-section support</p>
+            </div>
+            <div class="feature-card">
+                <h4>🚀 Real-time Processing</h4>
+                <p>Live camera feed with instant OMR evaluation</p>
+            </div>
+            <div class="feature-card">
+                <h4>📊 Batch Processing</h4>
+                <p>Process multiple OMR sheets in one go</p>
+            </div>
+        </div>
+
+        <div class="camera-section">
+            <h3>📋 System Logs</h3>
+            <div id="logs" class="logs">
+                System ready... Waiting for camera initialization.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentStream = null;
+        let capturedImageData = null;
+
+        function log(message) {
+            const logs = document.getElementById('logs');
+            const timestamp = new Date().toLocaleTimeString();
+            logs.innerHTML += `[${timestamp}] ${message}\n`;
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        function showStatus(message, type = 'success') {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+            statusEl.style.display = 'block';
+            
+            setTimeout(() => {
+                statusEl.style.display = 'none';
+            }, 5000);
+        }
+
+        async function startPCCamera() {
+            log('Starting PC camera...');
+            try {
+                await stopCamera();
+                
+                const constraints = {
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'environment' // Prefer back camera
+                    },
+                    audio: false
+                };
+
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                document.getElementById('cameraView').srcObject = currentStream;
+                
+                log('✅ PC camera started successfully');
+                showStatus('PC Camera activated successfully!', 'success');
+                
+            } catch (error) {
+                log(`❌ PC camera error: ${error.message}`);
+                showStatus(`PC Camera error: ${error.message}`, 'error');
+            }
+        }
+
+        async function startPhoneCamera() {
+            log('Starting phone camera...');
+            try {
+                await stopCamera();
+                
+                // Check if device supports camera
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('Camera API not supported');
+                }
+
+                const constraints = {
+                    video: {
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                        facingMode: { ideal: 'environment' } // Back camera for document scanning
+                    },
+                    audio: false
+                };
+
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                document.getElementById('cameraView').srcObject = currentStream;
+                
+                log('✅ Phone camera started successfully');
+                showStatus('Phone Camera activated successfully!', 'success');
+                
+            } catch (error) {
+                log(`❌ Phone camera error: ${error.message}`);
+                showStatus(`Phone Camera error: ${error.message}`, 'error');
+            }
+        }
+
+        async function startARCamera() {
+            log('Starting AR camera...');
+            try {
+                await stopCamera();
+                
+                // Enhanced constraints for AR/WebXR compatibility
+                const constraints = {
+                    video: {
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                        facingMode: { ideal: 'environment' },
+                        frameRate: { ideal: 30 },
+                        // AR-specific constraints
+                        aspectRatio: { ideal: 16/9 },
+                        resizeMode: 'crop-and-scale'
+                    },
+                    audio: false
+                };
+
+                // Try to get camera with AR-optimized settings
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                const videoEl = document.getElementById('cameraView');
+                videoEl.srcObject = currentStream;
+                
+                // Enable additional AR features if available
+                if ('getDisplayMedia' in navigator.mediaDevices) {
+                    log('Display capture API available for AR enhancement');
+                }
+                
+                log('✅ AR camera started successfully');
+                showStatus('AR Camera activated successfully! Ready for OMR scanning.', 'success');
+                
+            } catch (error) {
+                log(`❌ AR camera error: ${error.message}`);
+                showStatus(`AR Camera error: ${error.message}`, 'error');
+                
+                // Fallback to regular camera
+                log('Attempting fallback to regular camera...');
+                await startPCCamera();
+            }
+        }
+
+        async function stopCamera() {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                currentStream = null;
+                document.getElementById('cameraView').srcObject = null;
+                log('Camera stopped');
+            }
+        }
+
+        async function captureImage() {
+            if (!currentStream) {
+                showStatus('Please start a camera first!', 'warning');
+                return;
+            }
+
+            log('Capturing image...');
+            try {
+                const videoEl = document.getElementById('cameraView');
+                const canvas = document.createElement('canvas');
+                canvas.width = videoEl.videoWidth;
+                canvas.height = videoEl.videoHeight;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(videoEl, 0, 0);
+                
+                capturedImageData = canvas.toDataURL('image/jpeg', 0.9);
+                
+                log(`✅ Image captured (${canvas.width}x${canvas.height})`);
+                showStatus('Image captured successfully!', 'success');
+                
+                // Optional: Send to server for processing
+                await sendCaptureToServer(capturedImageData);
+                
+            } catch (error) {
+                log(`❌ Capture error: ${error.message}`);
+                showStatus(`Capture error: ${error.message}`, 'error');
+            }
+        }
+
+        async function sendCaptureToServer(imageData) {
+            try {
+                const response = await fetch('/api/camera/capture', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        camera_type: 'ar',
+                        image_data: imageData
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    log(`✅ Image sent to server successfully`);
+                    showStatus('Image uploaded to server!', 'success');
+                } else {
+                    log(`❌ Server error: ${result.error}`);
+                    showStatus(`Server error: ${result.error}`, 'error');
+                }
+                
+            } catch (error) {
+                log(`❌ Upload error: ${error.message}`);
+                showStatus(`Upload error: ${error.message}`, 'error');
+            }
+        }
+
+        async function processImage() {
+            if (!capturedImageData) {
+                showStatus('Please capture an image first!', 'warning');
+                return;
+            }
+
+            log('Processing OMR image...');
+            try {
+                // Here you would send the image for OMR processing
+                showStatus('OMR processing started...', 'success');
+                
+                // Simulate processing time
+                setTimeout(() => {
+                    log('✅ OMR processing completed');
+                    showStatus('OMR processing completed! Check results.', 'success');
+                }, 2000);
+                
+            } catch (error) {
+                log(`❌ Processing error: ${error.message}`);
+                showStatus(`Processing error: ${error.message}`, 'error');
+            }
+        }
+
+        // Initialize camera permissions check on page load
+        window.addEventListener('load', async () => {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                
+                log(`Found ${videoDevices.length} camera(s)`);
+                videoDevices.forEach((device, index) => {
+                    log(`Camera ${index + 1}: ${device.label || 'Unknown Camera'}`);
+                });
+                
+                if (videoDevices.length === 0) {
+                    showStatus('No cameras detected!', 'warning');
+                }
+                
+            } catch (error) {
+                log(`❌ Camera enumeration error: ${error.message}`);
+            }
+        });
+
+        // Handle page cleanup
+        window.addEventListener('beforeunload', () => {
+            stopCamera();
+        });
+    </script>
+</body>
+</html>

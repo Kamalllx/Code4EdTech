@@ -32,7 +32,7 @@ CORS(app)
 # Initialize services
 camera_service = CameraService()
 preprocessing_service = PreprocessingService()
-yolo_service = YOLOService(app.config['MODEL_PATH'])
+yolo_service = YOLOService(app.config['YOLO_MODEL_PATH'])
 audit_service = AuditService(app.config['AUDIT_DIR'])
 
 # Ensure upload directories exist
@@ -393,30 +393,115 @@ def dashboard():
         return render_template('dashboard.html', error=str(e))
 
 
-if __name__ == '__main__':
-    # Create SSL context for HTTPS (required for camera access)
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    
-    # For development, create self-signed certificate
-    if not os.path.exists('cert.pem') or not os.path.exists('key.pem'):
-        print("Creating self-signed certificate for HTTPS...")
-        os.system('openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost"')
-    
+def create_self_signed_cert():
+    """Create self-signed certificate using Python (fallback if openssl not available)"""
     try:
-        context.load_cert_chain('cert.pem', 'key.pem')
-        print("Starting OMR Flask Application with HTTPS...")
-        print("Access the application at: https://localhost:5000")
-        print("Note: You may need to accept the self-signed certificate warning")
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.backends import default_backend
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.hazmat.primitives import serialization
+        import datetime
+        import ipaddress
         
-        app.run(
-            host='0.0.0.0',
-            port=5000,
-            debug=app.config['DEBUG'],
-            ssl_context=context
+        # Generate private key
+        key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+            backend=default_backend()
         )
+        
+        # Create certificate
+        subject = issuer = x509.Name([
+            x509.NameAttribute(NameOID.COMMON_NAME, u"localhost"),
+        ])
+        
+        cert = x509.CertificateBuilder().subject_name(
+            subject
+        ).issuer_name(
+            issuer
+        ).public_key(
+            key.public_key()
+        ).serial_number(
+            x509.random_serial_number()
+        ).not_valid_before(
+            datetime.datetime.utcnow()
+        ).not_valid_after(
+            datetime.datetime.utcnow() + datetime.timedelta(days=365)
+        ).add_extension(
+            x509.SubjectAlternativeName([
+                x509.DNSName(u"localhost"),
+                x509.IPAddress(ipaddress.IPv4Address(u"127.0.0.1")),
+            ]),
+            critical=False,
+        ).sign(key, hashes.SHA256(), default_backend())
+        
+        # Write private key
+        with open("key.pem", "wb") as f:
+            f.write(key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption()
+            ))
+        
+        # Write certificate
+        with open("cert.pem", "wb") as f:
+            f.write(cert.public_bytes(serialization.Encoding.PEM))
+        
+        return True
+    except ImportError:
+        print("cryptography package not available for certificate generation")
+        return False
     except Exception as e:
-        print(f"Failed to start with HTTPS: {e}")
-        print("Starting with HTTP (camera access may be limited)...")
+        print(f"Failed to create certificate with Python: {e}")
+        return False
+
+
+if __name__ == '__main__':
+    # Try to enable HTTPS if required
+    use_https = app.config.get('HTTPS_REQUIRED', False)
+    
+    if use_https:
+        # Create SSL context for HTTPS (required for camera access)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        
+        # Check if certificates exist
+        if not os.path.exists('cert.pem') or not os.path.exists('key.pem'):
+            print("Creating self-signed certificate for HTTPS...")
+            
+            # Try openssl first
+            openssl_result = os.system('openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost" 2>nul')
+            
+            if openssl_result != 0:
+                print("OpenSSL not available, trying Python certificate generation...")
+                if not create_self_signed_cert():
+                    print("Could not create SSL certificate, falling back to HTTP")
+                    use_https = False
+        
+        if use_https:
+            try:
+                context.load_cert_chain('cert.pem', 'key.pem')
+                print("Starting OMR Flask Application with HTTPS...")
+                print("Access the application at: https://localhost:5000")
+                print("Note: You may need to accept the self-signed certificate warning")
+                
+                app.run(
+                    host='0.0.0.0',
+                    port=5000,
+                    debug=app.config['DEBUG'],
+                    ssl_context=context
+                )
+            except Exception as e:
+                print(f"Failed to start with HTTPS: {e}")
+                print("Starting with HTTP (camera access may be limited)...")
+                use_https = False
+    
+    if not use_https:
+        print("Starting OMR Flask Application with HTTP...")
+        print("Access the application at: http://localhost:5000")
+        print("Note: Camera access may be limited without HTTPS")
+        
         app.run(
             host='0.0.0.0',
             port=5000,
