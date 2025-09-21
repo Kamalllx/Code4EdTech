@@ -9,6 +9,7 @@ import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { apiClient, type Student, type Exam } from '@/lib/api'
 import ARIntegration from '@/components/ar-integration'
+import EnhancedOMRUpload from '@/components/enhanced-omr-upload'
 
 export default function UploadPage() {
   const [students, setStudents] = useState<Student[]>([])
@@ -143,10 +144,14 @@ export default function UploadPage() {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs defaultValue="manual" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="manual" className="flex items-center space-x-2">
               <Upload className="h-4 w-4" />
               <span>Manual Upload</span>
+            </TabsTrigger>
+            <TabsTrigger value="enhanced" className="flex items-center space-x-2">
+              <FileText className="h-4 w-4" />
+              <span>Enhanced Detection</span>
             </TabsTrigger>
             <TabsTrigger value="ar" className="flex items-center space-x-2">
               <Camera className="h-4 w-4" />
@@ -407,6 +412,22 @@ export default function UploadPage() {
             </CardContent>
           </Card>
             </div>
+          </TabsContent>
+
+          {/* Enhanced Detection Tab */}
+          <TabsContent value="enhanced">
+            <EnhancedOMRUpload 
+              onUploadSuccess={(result) => {
+                console.log('Enhanced upload success:', result)
+                setUploadResult(result)
+                setUploadStatus('completed')
+              }}
+              onUploadError={(error) => {
+                console.error('Enhanced upload error:', error)
+                setError(error)
+                setUploadStatus('error')
+              }}
+            />
           </TabsContent>
 
           {/* AR Camera Tab */}

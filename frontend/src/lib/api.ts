@@ -49,7 +49,10 @@ export const endpoints = {
   
   // OMR Processing
   uploadOMR: '/api/upload',
+  uploadOMREnhanced: '/api/upload/enhanced',
   omrStatus: (id: string) => `/api/upload/${id}`,
+  processingDetails: (id: string) => `/api/processing/details/${id}`,
+  detectionPreview: (id: string) => `/api/detection/preview/${id}`,
   
   // Results
   studentResults: (id: string) => `/api/results/${id}`,
@@ -176,9 +179,27 @@ export const apiClient = {
     return await backendAPI.uploadOMR(formData)
   },
 
+  async uploadOMRSheetEnhanced(formData: FormData) {
+    const response = await api.post(endpoints.uploadOMREnhanced, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
+    return response.data
+  },
+
   async getOMRStatus(sheetId: string) {
-    // This would need to be implemented in your friend's backend
-    const response = await api.get(`/api/upload/${sheetId}`)
+    const response = await api.get(endpoints.omrStatus(sheetId))
+    return response.data
+  },
+
+  async getProcessingDetails(sheetId: string) {
+    const response = await api.get(endpoints.processingDetails(sheetId))
+    return response.data
+  },
+
+  async getDetectionPreview(sheetId: string) {
+    const response = await api.get(endpoints.detectionPreview(sheetId))
     return response.data
   },
 
