@@ -8,6 +8,7 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import json
 import os
+import sqlite3
 from pathlib import Path
 from datetime import datetime
 import logging
@@ -364,6 +365,82 @@ def get_exam_statistics(exam_id):
     try:
         stats = db.get_exam_statistics(exam_id)
         return jsonify(stats)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/statistics/overview', methods=['GET'])
+def get_overview_statistics():
+    """Get system overview statistics"""
+    try:
+        import sqlite3
+        with sqlite3.connect(db.db_path) as conn:
+            cursor = conn.cursor()
+            
+            # Get total students
+            cursor.execute("SELECT COUNT(*) FROM students")
+            total_students = cursor.fetchone()[0]
+            
+            # Get total exams
+            cursor.execute("SELECT COUNT(*) FROM exams")
+            total_exams = cursor.fetchone()[0]
+            
+            # Get total OMR sheets
+            cursor.execute("SELECT COUNT(*) FROM omr_sheets")
+            total_sheets = cursor.fetchone()[0]
+            
+            # Get processed sheets
+            cursor.execute("SELECT COUNT(*) FROM omr_sheets WHERE processing_status = 'completed'")
+            processed_sheets = cursor.fetchone()[0]
+            
+            # Get pending reviews (sheets with low confidence) - handle case where no results exist
+            try:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM omr_sheets os
+                    JOIN evaluation_results er ON er.omr_sheet_id = os.id
+                    WHERE er.model_confidence < 0.8
+                """)
+                pending_reviews = cursor.fetchone()[0]
+            except:
+                pending_reviews = 0
+            
+            # Calculate processing rate
+            processing_rate = (processed_sheets / total_sheets * 100) if total_sheets > 0 else 0
+            
+            return jsonify({
+                'total_students': total_students,
+                'total_exams': total_exams,
+                'total_sheets': total_sheets,
+                'processed_sheets': processed_sheets,
+                'pending_reviews': pending_reviews,
+                'processing_rate': round(processing_rate, 2)
+            })
+    except Exception as e:
+        logging.error(f"Error in overview statistics: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/recent-activity', methods=['GET'])
+def get_recent_activity():
+    """Get recent system activity"""
+    try:
+        limit = request.args.get('limit', 10, type=int)
+        results = db.get_recent_evaluations(limit)
+        
+        # Format for activity feed
+        activities = []
+        for result in results:
+            activities.append({
+                'id': result['id'],
+                'type': 'omr_processed',
+                'student_id': result['student_id'],
+                'student_name': result['name'],
+                'exam_name': result['exam_name'],
+                'score': result['total_score'],
+                'percentage': result['percentage'],
+                'timestamp': result['evaluation_timestamp'],
+                'status': 'completed'
+            })
+        
+        return jsonify(activities)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

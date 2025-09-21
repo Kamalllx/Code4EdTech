@@ -40,6 +40,8 @@ export const BACKEND_ENDPOINTS = {
     EXAM: (id: string) => `/api/results/exam/${id}`,
     EXPORT: (id: string) => `/api/export/${id}`,
     STATISTICS: (id: string) => `/api/statistics/${id}`,
+    OVERVIEW: '/api/statistics/overview',
+    RECENT_ACTIVITY: '/api/recent-activity',
   },
   
   // AR Integration (for your friend's AR system)
@@ -200,6 +202,14 @@ export class BackendAPI {
   // Statistics
   async getStatistics(examId: string): Promise<APIResponse> {
     return this.request(BACKEND_ENDPOINTS.RESULTS.STATISTICS(examId))
+  }
+
+  async getOverviewStatistics(): Promise<APIResponse> {
+    return this.request(BACKEND_ENDPOINTS.RESULTS.OVERVIEW)
+  }
+
+  async getRecentActivity(): Promise<APIResponse> {
+    return this.request(BACKEND_ENDPOINTS.RESULTS.RECENT_ACTIVITY)
   }
 }
 

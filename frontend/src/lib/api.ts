@@ -61,6 +61,7 @@ export const endpoints = {
   
   // Statistics
   overview: '/api/statistics/overview',
+  recentActivity: '/api/recent-activity',
   
   // Flagged sheets
   flaggedSheets: '/api/flagged-sheets',

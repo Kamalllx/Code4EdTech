@@ -49,8 +49,8 @@ export default function Dashboard() {
     try {
       setLoading(true)
       const [statsResponse, activityResponse] = await Promise.all([
-        api.get('/statistics/overview'),
-        api.get('/recent-activity') // This would be a new endpoint
+        api.get('/api/statistics/overview'),
+        api.get('/api/recent-activity')
       ])
       
       setStats(statsResponse.data)
