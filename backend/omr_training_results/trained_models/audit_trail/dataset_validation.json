@@ -1,0 +1,47 @@
+{
+  "status": "success",
+  "errors": [],
+  "warnings": [],
+  "statistics": {
+    "train": {
+      "images": 84,
+      "labels": 84,
+      "matched": 84
+    },
+    "val": {
+      "images": 8,
+      "labels": 8,
+      "matched": 8
+    },
+    "test": {
+      "images": 5,
+      "labels": 5,
+      "matched": 5
+    }
+  },
+  "dataset_config": {
+    "names": {
+      "0": "unmarked_bubble",
+      "1": "marked_bubble"
+    },
+    "nc": 2,
+    "path": "C:\\Users\\sayal\\OneDrive\\Desktop\\OMR\\Code4EdTech\\backend\\omr_training_results\\processed_dataset",
+    "test": "test/images",
+    "train": "train/images",
+    "val": "val/images"
+  },
+  "class_distribution": {
+    "train": {
+      "0": 32527,
+      "1": 44280
+    },
+    "val": {
+      "0": 2360,
+      "1": 5691
+    },
+    "test": {
+      "0": 1820,
+      "1": 1985
+    }
+  }
+}

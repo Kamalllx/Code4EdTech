@@ -1,0 +1,3 @@
+2025-09-21 13:17:25,416 - INFO - Starting OMR Bubble Classification Training Pipeline
+2025-09-21 13:17:25,416 - INFO - Arguments: {'data_dir': 'dataset', 'output_dir': 'omr_training_results', 'model_type': 'classification', 'epochs': 50, 'batch_size': 16, 'train_ratio': 0.7, 'val_ratio': 0.2, 'test_ratio': 0.1, 'augment': True, 'skip_data_prep': False}
+2025-09-21 13:17:25,416 - ERROR - Input data validation failed

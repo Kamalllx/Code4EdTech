@@ -1,0 +1,13 @@
+2025-09-21 13:21:19,658 - INFO - Starting OMR Bubble Classification Training Pipeline
+2025-09-21 13:21:19,660 - INFO - Arguments: {'data_dir': 'dataset', 'output_dir': 'omr_training_results', 'model_type': 'classification', 'epochs': 50, 'batch_size': 16, 'train_ratio': 0.7, 'val_ratio': 0.2, 'test_ratio': 0.1, 'augment': True, 'skip_data_prep': False}
+2025-09-21 13:21:19,681 - INFO - Audit trail initialized: omr_training_results\audit_trail
+2025-09-21 13:21:19,681 - INFO - Step 1: Starting data preparation...
+2025-09-21 13:21:19,687 - ERROR - Training pipeline failed: No images found in dataset
+2025-09-21 13:21:19,688 - ERROR - Full traceback:
+Traceback (most recent call last):
+  File "C:\Users\sayal\OneDrive\Desktop\OMR\Code4EdTech\backend\train.py", line 121, in main
+    prep_results = preparator.process_dataset(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\sayal\OneDrive\Desktop\OMR\Code4EdTech\backend\data_preparation.py", line 299, in process_dataset
+    raise ValueError(f"No images found in {self.data_dir}")
+ValueError: No images found in dataset

@@ -1,0 +1,12 @@
+2025-09-21 13:23:13,118 - INFO - Starting OMR Bubble Classification Training Pipeline
+2025-09-21 13:23:13,119 - INFO - Arguments: {'data_dir': 'dataset', 'output_dir': 'omr_training_results', 'model_type': 'classification', 'epochs': 50, 'batch_size': 16, 'train_ratio': 0.7, 'val_ratio': 0.2, 'test_ratio': 0.1, 'augment': True, 'skip_data_prep': False}
+2025-09-21 13:23:13,123 - INFO - Audit trail initialized: omr_training_results\audit_trail
+2025-09-21 13:23:13,123 - INFO - Step 1: Starting data preparation...
+2025-09-21 13:23:20,673 - INFO - Data preparation completed
+2025-09-21 13:23:20,677 - INFO - Training images: 32
+2025-09-21 13:23:20,677 - INFO - Validation images: 9
+2025-09-21 13:23:20,677 - INFO - Test images: 5
+2025-09-21 13:23:20,677 - INFO - Step 2: Starting model training...
+2025-09-21 13:25:11,512 - INFO - Model training completed. Audit report: omr_training_results\trained_models\audit_trail\complete_audit_report_20250921_132320.json
+2025-09-21 13:25:11,514 - INFO - Step 3: Starting comprehensive evaluation...
+2025-09-21 13:25:11,529 - ERROR - Best model not found. Training may have failed.

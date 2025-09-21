@@ -77,22 +77,38 @@ class OMRDataPreparator:
         Returns:
             List of bounding boxes (x, y, w, h)
         """
+        # Convert to grayscale
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         
-        # Use HoughCircles to detect circular bubbles
-        circles = cv2.HoughCircles(
-            gray, cv2.HOUGH_GRADIENT, dp=1, minDist=20,
-            param1=50, param2=30, minRadius=10, maxRadius=25
+        # Apply Gaussian blur to reduce noise
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        
+        # Apply adaptive thresholding
+        thresh = cv2.adaptiveThreshold(
+            blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY_INV, 11, 2
         )
         
+        # Find contours
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
         bubbles = []
-        if circles is not None:
-            circles = np.round(circles[0, :]).astype("int")
-            for (x, y, r) in circles:
-                # Convert circle to bounding box
-                x1, y1 = max(0, x - r), max(0, y - r)
-                x2, y2 = min(image.shape[1], x + r), min(image.shape[0], y + r)
-                bubbles.append((x1, y1, x2 - x1, y2 - y1))
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            
+            # Filter by area (broader range)
+            if 20 < area < 5000:
+                # Check circularity
+                perimeter = cv2.arcLength(contour, True)
+                if perimeter > 0:
+                    circularity = 4 * np.pi * area / (perimeter * perimeter)
+                    
+                    if circularity > 0.3:  # Lower threshold
+                        x, y, w, h = cv2.boundingRect(contour)
+                        aspect_ratio = w / h
+                        
+                        if 0.5 <= aspect_ratio <= 2.0:  # Broader aspect ratio
+                            bubbles.append((x, y, w, h))
         
         return bubbles
     
@@ -150,7 +166,6 @@ class OMRDataPreparator:
         return A.Compose([
             A.Rotate(limit=10, p=0.5),
             A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
-            A.GaussianNoise(var_limit=(10.0, 50.0), p=0.3),
             A.Blur(blur_limit=3, p=0.3),
             A.HorizontalFlip(p=0.3),
             A.Affine(shift_limit=0.05, scale_limit=0.1, rotate_limit=5, p=0.5),
@@ -287,16 +302,20 @@ class OMRDataPreparator:
         Returns:
             Processing summary for audit trail
         """
-        # Get all image files
+        # Get all image files (including subdirectories)
         image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']
         image_files = []
         
         for ext in image_extensions:
+            # Check direct files
             image_files.extend(self.data_dir.glob(f"*{ext}"))
             image_files.extend(self.data_dir.glob(f"*{ext.upper()}"))
+            # Check subdirectories
+            image_files.extend(self.data_dir.glob(f"**/*{ext}"))
+            image_files.extend(self.data_dir.glob(f"**/*{ext.upper()}"))
         
         if not image_files:
-            raise ValueError(f"No images found in {self.data_dir}")
+            raise ValueError(f"No images found in {self.data_dir} or its subdirectories")
         
         print(f"Found {len(image_files)} images to process")
         

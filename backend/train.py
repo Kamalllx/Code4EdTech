@@ -44,16 +44,20 @@ def validate_input_data(data_dir: str) -> bool:
         print(f"Error: Data directory '{data_dir}' does not exist")
         return False
     
-    # Check for image files
+    # Check for image files (including subdirectories)
     image_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']
     image_files = []
     
     for ext in image_extensions:
+        # Check direct files
         image_files.extend(data_path.glob(f"*{ext}"))
         image_files.extend(data_path.glob(f"*{ext.upper()}"))
+        # Check subdirectories
+        image_files.extend(data_path.glob(f"**/*{ext}"))
+        image_files.extend(data_path.glob(f"**/*{ext.upper()}"))
     
     if not image_files:
-        print(f"Error: No image files found in '{data_dir}'")
+        print(f"Error: No image files found in '{data_dir}' or its subdirectories")
         print("Supported formats: .jpg, .jpeg, .png, .bmp, .tiff")
         return False
     

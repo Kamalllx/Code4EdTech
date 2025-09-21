@@ -1,0 +1,8 @@
+names:
+  0: unmarked_bubble
+  1: marked_bubble
+nc: 2
+path: C:\Users\sayal\OneDrive\Desktop\OMR\Code4EdTech\backend\omr_training_results\processed_dataset
+test: test/images
+train: train/images
+val: val/images

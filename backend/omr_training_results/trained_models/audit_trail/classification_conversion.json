@@ -1,0 +1,17 @@
+{
+  "train": {
+    "unmarked_bubble": 32525,
+    "marked_bubble": 44244,
+    "total_crops": 76769
+  },
+  "val": {
+    "unmarked_bubble": 2360,
+    "marked_bubble": 5691,
+    "total_crops": 8051
+  },
+  "test": {
+    "unmarked_bubble": 1820,
+    "marked_bubble": 1985,
+    "total_crops": 3805
+  }
+}
