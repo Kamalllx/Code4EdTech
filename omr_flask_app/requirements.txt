@@ -1,0 +1,45 @@
+# Flask Application Requirements
+# OMR Evaluation System with Camera Capture and YOLO Integration
+
+# Core Flask Framework
+flask==2.3.3
+flask-cors==4.0.0
+
+# Computer Vision and Image Processing
+opencv-python==4.8.1.78
+opencv-contrib-python==4.8.1.78
+pillow==10.0.1
+scikit-image==0.21.0
+numpy==1.24.3
+
+# Machine Learning and YOLO
+ultralytics==8.0.196
+torch==2.0.1
+torchvision==0.15.2
+
+# Image Processing and Enhancement
+scipy==1.11.3
+matplotlib==3.7.2
+
+# Utilities and Data Handling
+requests==2.31.0
+python-dateutil==2.8.2
+uuid
+
+# Development and Debugging
+python-dotenv==1.0.0
+
+# Optional: Database Support (uncomment if needed)
+# flask-sqlalchemy==3.0.5
+# sqlite3
+
+# Optional: Authentication (uncomment if needed)
+# flask-login==0.6.3
+# werkzeug==2.3.7
+
+# Optional: Enhanced Logging (uncomment if needed)
+# loguru==0.7.2
+
+# Optional: Task Queue (uncomment if needed)
+# celery==5.3.2
+# redis==4.6.0
